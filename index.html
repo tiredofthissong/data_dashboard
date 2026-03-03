@@ -28,7 +28,6 @@
             min-height: 100vh;
         }
 
-        /* Glassmorphism Header */
         header {
             width: 100%;
             max-width: 800px;
@@ -47,7 +46,6 @@
             font-weight: 600;
         }
 
-        /* Drag and Drop Zone */
         #drop-zone {
             width: 100%;
             max-width: 800px;
@@ -73,12 +71,10 @@
             margin-top: 1rem;
         }
 
-        /* Hidden File Input for Accessibility */
         #file-input {
             display: none;
         }
         
-        /* Container for future AI Chat and Dashboard */
         #app-container {
             width: 100%;
             max-width: 800px;
@@ -100,75 +96,196 @@
         <input type="file" id="file-input" accept=".csv">
     </div>
 
-    <div id="app-container"></div>
+    <div id="app-container">
+        <div id="api-config" style="margin-bottom: 2rem; text-align: center;">
+            <input type="password" id="gemini-api-key" placeholder="Enter New Gemini API Key Here" style="padding: 0.8rem; width: 60%; border-radius: 6px; border: 1px solid var(--glass-border); background: var(--glass-bg); color: var(--text-main); margin-bottom: 1rem;">
+            <p style="font-size: 0.8rem; color: var(--text-muted);">Your key remains locally in your browser and is never stored.</p>
+        </div>
+
+        <div id="qa-container" style="display: none; background: var(--glass-bg); padding: 2rem; border-radius: 12px; border: 1px solid var(--glass-border);">
+            <h2 style="margin-top: 0;">Context Gathering</h2>
+            <div id="questions-list"></div>
+            <button id="submit-answers" style="margin-top: 1.5rem; padding: 0.8rem 1.5rem; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%;">Generate Executive Dashboard</button>
+        </div>
+
+        <div id="dashboard-container" style="display: none; width: 100%; margin-top: 2rem; background: var(--glass-bg); padding: 2rem; border-radius: 12px; border: 1px solid var(--glass-border);">
+            <div id="narrative-section" style="margin-bottom: 2rem;"></div>
+            <div id="charts-section" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;"></div>
+        </div>
+    </div>
 
     <script>
         // DOM Elements
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
+        let globalParsedData = null; // Stores data for Phase 3
 
         // Drag and Drop Events
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('dragover');
-        });
-
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('dragover');
-        });
-
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
-            
-            if (e.dataTransfer.files.length) {
-                handleFile(e.dataTransfer.files[0]);
-            }
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
         });
-
-        // Click to upload event
         fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length) {
-                handleFile(e.target.files[0]);
-            }
+            if (e.target.files.length) handleFile(e.target.files[0]);
         });
 
-        // Core File Processing
+        // Parse CSV
         function handleFile(file) {
             if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
                 alert('Please upload a valid .csv file.');
                 return;
             }
 
-            console.log(`Processing file: ${file.name}`);
-
-            // Parse the CSV directly in the browser using PapaParse
             Papa.parse(file, {
-                header: true, // Treat the first row as keys
-                dynamicTyping: true, // Automatically convert numbers and booleans
+                header: true,
+                dynamicTyping: true,
                 skipEmptyLines: true,
                 complete: function(results) {
-                    console.log("Parsing Complete:", results.data);
-                    
-                    // Proceed to Phase 2: Triggering Gemini
+                    globalParsedData = results.data;
                     initiateGeminiAnalysis(results.data);
                 },
-                error: function(error) {
-                    console.error("Error parsing CSV:", error);
-                }
+                error: function(error) { console.error("Error parsing CSV:", error); }
             });
         }
 
-        // Placeholder for the next step
-        function initiateGeminiAnalysis(parsedData) {
-            dropZone.style.display = 'none'; // Hide drop zone
-            
-            // Extract a sample for Gemini (Headers + first 5 rows)
+        // Phase 2: Generate Questions
+        async function initiateGeminiAnalysis(parsedData) {
+            const apiKey = document.getElementById('gemini-api-key').value;
+            if (!apiKey) { alert("Please enter your Gemini API Key first."); return; }
+
+            dropZone.style.display = 'none';
+            document.getElementById('qa-container').style.display = 'block';
+            document.getElementById('questions-list').innerHTML = '<p><em>Analyzing data structure and generating strategic questions...</em></p>';
+
             const headers = Object.keys(parsedData[0]);
             const sampleData = parsedData.slice(0, 5);
             
-            console.log("Data ready for Gemini:", { headers, sampleData });
-            alert("File successfully parsed! Check the developer console. Next step: Connect to Gemini API.");
+            const prompt = `
+            You are an expert data analyst and executive storyteller. I am building a dashboard.
+            Here are the columns of my dataset: ${headers.join(', ')}.
+            Here is a sample of the first 5 rows: ${JSON.stringify(sampleData)}.
+            
+            Based on this data, ask me 3 to 5 clarifying questions to understand my goal, the core message I want to convey, and the specific metrics I care about. 
+            
+            CRITICAL: You must respond ONLY with a valid JSON array of strings containing the questions. Do not include markdown formatting, backticks, or any conversational text.
+            Example format: ["Question 1?", "Question 2?", "Question 3?"]
+            `;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+
+                const rawText = data.candidates[0].content.parts[0].text.trim();
+                const questions = JSON.parse(rawText);
+                renderQuestions(questions);
+
+            } catch (error) {
+                console.error("API Error:", error);
+                document.getElementById('questions-list').innerHTML = `<p style="color: #ef4444;">Error connecting to AI: ${error.message}</p>`;
+            }
+        }
+
+        function renderQuestions(questions) {
+            const list = document.getElementById('questions-list');
+            list.innerHTML = ''; 
+            questions.forEach(q => {
+                const div = document.createElement('div');
+                div.style.marginBottom = '1.5rem';
+                div.innerHTML = `
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">${q}</label>
+                    <input type="text" class="user-answer" data-question="${q}" style="width: 100%; padding: 0.8rem; border-radius: 6px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); color: white; box-sizing: border-box;" placeholder="Your answer...">
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        // Phase 3: Generate Dashboard
+        document.getElementById('submit-answers').addEventListener('click', async () => {
+            const apiKey = document.getElementById('gemini-api-key').value;
+            const submitBtn = document.getElementById('submit-answers');
+            
+            const inputs = document.querySelectorAll('.user-answer');
+            let qaContext = [];
+            inputs.forEach(input => {
+                qaContext.push(`Q: ${input.getAttribute('data-question')} | A: ${input.value}`);
+            });
+
+            submitBtn.innerText = "Generating Dashboard... Please wait.";
+            submitBtn.disabled = true;
+
+            const sampleData = globalParsedData.slice(0, 10);
+            
+            const prompt = `
+            You are an expert data visualization engineer. I am building a dashboard using Chart.js.
+            Here is a sample of my data: ${JSON.stringify(sampleData)}.
+            Here are my business goals and context based on your questions: ${qaContext.join(' || ')}.
+
+            Based on this, generate a highly structured JSON response with two parts:
+            1. "narrative": An object with "what", "why", and "how" string properties explaining the data's story.
+            2. "charts": An array of valid Chart.js configuration objects (type, data, options) to visualize this data. Keep charts clean and executive-level. Limit to 2-3 charts.
+
+            CRITICAL: Respond ONLY with the raw JSON object. Do not include markdown code blocks, backticks, or conversational text.
+            `;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+
+                const rawText = data.candidates[0].content.parts[0].text.trim();
+                const dashboardConfig = JSON.parse(rawText);
+
+                renderDashboard(dashboardConfig);
+
+            } catch (error) {
+                console.error("Dashboard Error:", error);
+                alert("Error generating dashboard. Check developer console.");
+                submitBtn.innerText = "Try Again";
+                submitBtn.disabled = false;
+            }
+        });
+
+        function renderDashboard(config) {
+            document.getElementById('qa-container').style.display = 'none';
+            document.getElementById('dashboard-container').style.display = 'block';
+
+            document.getElementById('narrative-section').innerHTML = `
+                <h2 style="color: var(--primary); margin-top: 0;">Executive Summary</h2>
+                <p><strong>What:</strong> ${config.narrative.what}</p>
+                <p><strong>Why:</strong> ${config.narrative.why}</p>
+                <p><strong>How:</strong> ${config.narrative.how}</p>
+                <hr style="border-color: var(--glass-border); margin: 2rem 0;">
+            `;
+
+            const chartsSection = document.getElementById('charts-section');
+            chartsSection.innerHTML = ''; // Clear previous
+            config.charts.forEach((chartConfig, index) => {
+                const wrapper = document.createElement('div');
+                wrapper.style.background = 'rgba(0,0,0,0.2)';
+                wrapper.style.padding = '1rem';
+                wrapper.style.borderRadius = '8px';
+                
+                const canvas = document.createElement('canvas');
+                canvas.id = `chart-${index}`;
+                wrapper.appendChild(canvas);
+                chartsSection.appendChild(wrapper);
+
+                new Chart(document.getElementById(`chart-${index}`), chartConfig);
+            });
         }
     </script>
 </body>
