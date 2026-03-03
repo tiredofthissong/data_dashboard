@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Executive Data Storyteller</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg-color: #0f172a;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        body {
+            margin: 0;
+            padding: 2rem;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Glassmorphism Header */
+        header {
+            width: 100%;
+            max-width: 800px;
+            padding: 1.5rem;
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        /* Drag and Drop Zone */
+        #drop-zone {
+            width: 100%;
+            max-width: 800px;
+            height: 250px;
+            border: 2px dashed var(--primary);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: var(--glass-bg);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        #drop-zone.dragover {
+            background: rgba(37, 99, 235, 0.1);
+            border-color: #60a5fa;
+        }
+
+        #drop-zone p {
+            color: var(--text-muted);
+            margin-top: 1rem;
+        }
+
+        /* Hidden File Input for Accessibility */
+        #file-input {
+            display: none;
+        }
+        
+        /* Container for future AI Chat and Dashboard */
+        #app-container {
+            width: 100%;
+            max-width: 800px;
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Executive Data Storyteller</h1>
+    </header>
+
+    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <svg width="48" height="48" fill="none" stroke="var(--primary)" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+        </svg>
+        <p>Drop your .csv file here or click to browse</p>
+        <input type="file" id="file-input" accept=".csv">
+    </div>
+
+    <div id="app-container"></div>
+
+    <script>
+        // DOM Elements
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+
+        // Drag and Drop Events
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            
+            if (e.dataTransfer.files.length) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        // Click to upload event
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // Core File Processing
+        function handleFile(file) {
+            if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+                alert('Please upload a valid .csv file.');
+                return;
+            }
+
+            console.log(`Processing file: ${file.name}`);
+
+            // Parse the CSV directly in the browser using PapaParse
+            Papa.parse(file, {
+                header: true, // Treat the first row as keys
+                dynamicTyping: true, // Automatically convert numbers and booleans
+                skipEmptyLines: true,
+                complete: function(results) {
+                    console.log("Parsing Complete:", results.data);
+                    
+                    // Proceed to Phase 2: Triggering Gemini
+                    initiateGeminiAnalysis(results.data);
+                },
+                error: function(error) {
+                    console.error("Error parsing CSV:", error);
+                }
+            });
+        }
+
+        // Placeholder for the next step
+        function initiateGeminiAnalysis(parsedData) {
+            dropZone.style.display = 'none'; // Hide drop zone
+            
+            // Extract a sample for Gemini (Headers + first 5 rows)
+            const headers = Object.keys(parsedData[0]);
+            const sampleData = parsedData.slice(0, 5);
+            
+            console.log("Data ready for Gemini:", { headers, sampleData });
+            alert("File successfully parsed! Check the developer console. Next step: Connect to Gemini API.");
+        }
+    </script>
+</body>
+</html>
